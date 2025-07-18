@@ -1,0 +1,1278 @@
+
+```{r setup, include=FALSE}
+false=FALSE
+true=TRUE
+```
+
+#Import
+```{r}
+library(DESeq2)
+library(dplyr)
+library(remotes)
+library(ggpubr)
+library(forcats)
+library(ggplot2)
+library(stringr)
+library(ggrepel)
+library(gplots)
+
+countData=read.csv('H:/geo submission/countdata.csv',header=1)
+countData_id<-dplyr::select(countData,1,2)
+head(countData)
+rownames(countData)=countData$gene_symbol
+```
+
+#Separate for individual analysis
+```{r}
+ThreeMonJoint=dplyr::select(countData, 1,2,6,7,8,12,13,14)
+rownames(ThreeMonJoint)=ThreeMonJoint$gene_symbol
+ThreeMonJoint=ThreeMonJoint[,-1]
+ThreeMonJoint=ThreeMonJoint[,-1]
+
+FiveDayJoint=dplyr::select(countData, 1,2,3,4,5,9,10,11)
+rownames(FiveDayJoint)=FiveDayJoint$gene_symbol
+FiveDayJoint=FiveDayJoint[,-1]
+FiveDayJoint=FiveDayJoint[,-1]
+
+WKYdev=dplyr::select(countData, 1,2,3,4,5,6,7,8)
+rownames(WKYdev)=WKYdev$gene_symbol
+WKYdev=WKYdev[,-1]
+WKYdev=WKYdev[,-1]
+
+SHRdev=dplyr::select(countData, 1,2,9,10,11,12,13,14)
+rownames(SHRdev)=SHRdev$gene_symbol
+SHRdev=SHRdev[,-1]
+SHRdev=SHRdev[,-1]
+
+countData=countData[,-1]
+countData=countData[,-1]
+
+strain=c("WKY","WKY","WKY","WKY","WKY","WKY","SHR","SHR","SHR","SHR","SHR","SHR")
+cellType=c("5d_Chon","5d_Chon","5d_Chon","3m_Chon","3m_Chon","3m_Chon","5d_Chon","5d_Chon","5d_Chon","3m_Chon","3m_Chon","3m_Chon")
+batch=c("1","1","2","1","1","2","1","1","2","1","1","2")
+
+strainByType=c("WKY","WKY","WKY","SHR","SHR","SHR")
+batchByType=c("1","1","2","1","1","2")
+cellByTime=c("5d","5d","5d","3m","3m","3m")
+
+colData=as.data.frame(cbind(colnames(countData),strain,cellType,batch))
+colData3m=as.data.frame(cbind(colnames(ThreeMonJoint),strainByType,batchByType))
+colData5d=as.data.frame(cbind(colnames(FiveDayJoint),strainByType,batchByType))
+colDataWKYdev=as.data.frame(cbind(colnames(WKYdev),cellByTime,batchByType))
+colDataSHRdev=as.data.frame(cbind(colnames(SHRdev),cellByTime,batchByType))
+```
+
+#Differential analysis
+```{r}
+countData=trunc(countData)
+dds=DESeqDataSetFromMatrix(countData=countData,colData=colData,design=~strain+cellType+strain*cellType+batch)
+
+ThreeMonJoint=trunc(ThreeMonJoint)
+FiveDayJoint=trunc(FiveDayJoint)
+WKYdev=trunc(WKYdev)
+SHRdev=trunc(SHRdev)
+dds3m=DESeqDataSetFromMatrix(countData=ThreeMonJoint,colData=colData3m,design=~strainByType+batchByType)
+dds5d=DESeqDataSetFromMatrix(countData=FiveDayJoint,colData=colData5d,design=~strainByType+batchByType)
+ddsWKY=DESeqDataSetFromMatrix(countData=WKYdev,colData=colDataWKYdev,design=~cellByTime+batchByType)
+ddsSHR=DESeqDataSetFromMatrix(countData=SHRdev,colData=colDataSHRdev,design=~cellByTime+batchByType)
+
+##remove batch effect
+
+dds <- DESeq(dds, test=c("LRT"),full=design(dds), reduced = ~ batch)
+dds3m <- DESeq(dds3m, test=c("LRT"),full=design(dds3m), reduced = ~ batchByType)
+dds5d <- DESeq(dds5d, test=c("LRT"),full=design(dds5d), reduced = ~ batchByType)
+ddsWKY <- DESeq(ddsWKY, test=c("LRT"),full=design(ddsWKY), reduced = ~ batchByType)
+ddsSHR <- DESeq(ddsSHR, test=c("LRT"),full=design(ddsSHR), reduced = ~ batchByType)
+```
+
+#Normalized expression
+```{r}
+rld3m=rlog(dds3m)
+mat <- assay(rld3m)
+mm <- model.matrix(~strainByType, colData(rld3m))
+mat <- limma::removeBatchEffect(mat, batch=rld3m$batchByType, design=mm)
+assay(rld3m) <- mat
+
+rld5d=rlog(dds5d)
+mat <- assay(rld5d)
+mm <- model.matrix(~strainByType, colData(rld5d))
+mat <- limma::removeBatchEffect(mat, batch=rld5d$batchByType, design=mm)
+assay(rld5d) <- mat
+
+rldWKY=rlog(ddsWKY)
+mat <- assay(rldWKY)
+mm <- model.matrix(~cellByTime, colData(rldWKY))
+mat <- limma::removeBatchEffect(mat, batch=rldWKY$batchByType, design=mm)
+assay(rldWKY) <- mat
+
+rldSHR=rlog(ddsSHR)
+mat <- assay(rldSHR)
+mm <- model.matrix(~cellByTime, colData(rldSHR))
+mat <- limma::removeBatchEffect(mat, batch=rldSHR$batchByType, design=mm)
+assay(rldSHR) <- mat
+
+rldChon=rlog(dds)
+mat <- assay(rldChon)
+mm <- model.matrix(~strain+cellType+strain*cellType, colData(rldChon))
+mat <- limma::removeBatchEffect(mat, batch=rldChon$batch, design=mm)
+assay(rldChon) <- mat
+```
+
+##Principal component analysis
+```{r}
+library(ggplot2)
+library(ggforce)
+
+plotPCA(rldChon,intgroup=c("strain","cellType")) + geom_point(aes(size = 2),show.legend=F) + geom_mark_ellipse(aes(fill = group), alpha = 0.25)
+```
+
+#Comparison results
+```{r}
+res3m=results(dds3m,contrast=c("strainByType","SHR","WKY"),alpha=0.05)
+res3m=res3m[order(abs(res3m$pvalue),decreasing=FALSE),]
+head(res3m)
+summary(res3m)
+
+res5d=results(dds5d,contrast=c("strainByType","SHR","WKY"),alpha=0.05)
+res5d=res5d[order(abs(res5d$pvalue),decreasing=FALSE),]
+head(res5d)
+summary(res5d)
+
+resWKY=results(ddsWKY,contrast=c("cellByTime","3m","5d"),alpha=0.05)
+resWKY=resWKY[order(abs(resWKY$pvalue),decreasing=FALSE),]
+head(resWKY)
+summary(resWKY)
+
+resSHR=results(ddsSHR,contrast=c("cellByTime","3m","5d"),alpha=0.05)
+resSHR=resSHR[order(abs(resSHR$pvalue),decreasing=FALSE),]
+head(resSHR)
+summary(resSHR)
+```
+
+#Volcano plots
+```{r}
+library(dplyr)
+library(ggplot2)
+res3m1=as.data.frame(res3m)
+
+res3m1$geneid<-rownames(res3m1)
+res3m1=mutate(res3m1,sig="No change")
+res3m1$sig[res3m1$log2FoldChange > 1 & res3m1$padj < 0.05] <- "Upregulated"
+res3m1$sig[res3m1$log2FoldChange < -1 & res3m1$padj < 0.05] <- "Downregulated"
+
+# Identify the top 10 hits
+Top_Hits = subset(res3m1,res3m1$padj<(1e-15) | abs(res3m1$log2FoldChange) > 7)
+Top_Hits = subset(Top_Hits,abs(Top_Hits$log2FoldChange)>1 & Top_Hits$padj<0.05)
+
+# Add column label, containing the gene name for the top hits or nothing for all others
+res3m1$label = if_else(res3m1$geneid %in% Top_Hits$geneid,  
+                   res3m1$geneid, "")
+
+ggplot(data=res3m1, aes(x=log2FoldChange, y=-log10(padj), col=sig, label=label)) +
+        geom_point() + 
+          scale_color_manual(values=c("#619CFF","#00BA38","#F8766D"))+
+        geom_vline(xintercept=c(-1, 1), col="red",linetype = "dashed") +
+        geom_hline(yintercept=-log10(0.05), col="red",linetype = "dashed") + 
+  ggtitle("3-month-old Joint Chondrocytes: WKY vs SHR")+
+  labs(color="Significantly Different?")+ 
+  geom_text_repel(check_overlap = TRUE,show.legend = FALSE,fontface = "bold",size=2)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(stringr)
+res5d1=as.data.frame(res5d)
+
+res5d1=mutate(res5d1,sig="No change")
+res5d1$sig[res5d1$log2FoldChange > 1 & res5d1$padj < 0.05] <- "Upregulated"
+res5d1$sig[res5d1$log2FoldChange < -1 & res5d1$padj < 0.05] <- "Downregulated"
+
+res5d1$geneid<-rownames(res5d1)
+# Identify the top 10 hits
+Top_Hits = subset(res5d1,res5d1$padj<(1e-15) | abs(res5d1$log2FoldChange) > 7)
+Top_Hits = subset(Top_Hits,abs(Top_Hits$log2FoldChange)>1 & Top_Hits$padj<0.05)
+
+# Add column label, containing the gene name for the top hits or nothing for all others
+res5d1$label = if_else(res5d1$geneid %in% Top_Hits$geneid,  
+                   res5d1$geneid, "")
+
+ggplot(data=res5d1, aes(x=log2FoldChange, y=-log10(padj), col=sig,label=label)) +
+        geom_point() + 
+          scale_color_manual(values=c("#619CFF","#00BA38","#F8766D"))+
+        geom_vline(xintercept=c(-1, 1), col="red",linetype = "dashed") +
+        geom_hline(yintercept=-log10(0.05), col="red",linetype = "dashed") + 
+  ggtitle("5-day-old Joint Chondrocytes: WKY vs SHR")+
+  labs(color="Significantly Different?")+ 
+    geom_text_repel(check_overlap = TRUE,show.legend = FALSE,fontface = "bold",size=2)
+```
+
+```{r}
+library(dplyr)
+resWKY1=as.data.frame(resWKY)
+
+resWKY1=mutate(resWKY1,sig="No change")
+resWKY1$sig[resWKY1$log2FoldChange > 1 & resWKY1$padj < 0.05] <- "Upregulated"
+resWKY1$sig[resWKY1$log2FoldChange < -1 & resWKY1$padj < 0.05] <- "Downregulated"
+
+resWKY1$geneid<-rownames(resWKY1)
+# Identify the top 10 hits
+Top_Hits = subset(resWKY1,resWKY1$padj<(1e-15) | abs(resWKY1$log2FoldChange) > 7)
+Top_Hits = subset(Top_Hits,abs(Top_Hits$log2FoldChange)>1 & Top_Hits$padj<0.05)
+
+# Add column label, containing the gene name for the top hits or nothing for all others
+resWKY1$label = if_else(resWKY1$geneid %in% Top_Hits$geneid,  
+                   resWKY1$geneid, "")
+
+ggplot(data=resWKY1, aes(x=log2FoldChange, y=-log10(padj), col=sig,label=label)) +
+        geom_point() + 
+          scale_color_manual(values=c("#619CFF","#00BA38","#F8766D"))+
+        geom_vline(xintercept=c(-1, 1), col="red",linetype = "dashed") +
+        geom_hline(yintercept=-log10(0.05), col="red",linetype = "dashed") + 
+  ggtitle("WKY: Joint_Chondrocytes_5-day-old vs 3-month-old")+labs(color="Significantly Different?")+ 
+  geom_text_repel(check_overlap = TRUE,show.legend = FALSE,fontface = "bold",size=2)
+```
+
+```{r}
+library(dplyr)
+resSHR1=as.data.frame(resSHR)
+
+resSHR1=mutate(resSHR1,sig="No change")
+resSHR1$sig[resSHR1$log2FoldChange > 1 & resSHR1$padj < 0.05] <- "Upregulated"
+resSHR1$sig[resSHR1$log2FoldChange < -1 & resSHR1$padj < 0.05] <- "Downregulated"
+
+resSHR1$geneid<-rownames(resSHR1)
+# Identify the top 10 hits
+Top_Hits = subset(resSHR1,resSHR1$padj<(1e-15) | abs(resSHR1$log2FoldChange) > 7)
+Top_Hits = subset(Top_Hits,abs(Top_Hits$log2FoldChange)>1 & Top_Hits$padj<0.05)
+
+# Add column label, containing the gene name for the top hits or nothing for all others
+resSHR1$label = if_else(resSHR1$geneid %in% Top_Hits$geneid,  
+                   resSHR1$geneid, "")
+
+ggplot(data=resSHR1, aes(x=log2FoldChange, y=-log10(padj), col=sig,label=label)) +
+        geom_point() + 
+          scale_color_manual(values=c("#619CFF","#00BA38","#F8766D"))+
+        geom_vline(xintercept=c(-1, 1), col="red",linetype = "dashed") +
+        geom_hline(yintercept=-log10(0.05), col="red",linetype = "dashed") + 
+  ggtitle("SHR: Joint_Chondrocytes_5-day-old vs 3-month-old")+labs(color="Significantly Different?")+ 
+  geom_text_repel(check_overlap = TRUE,show.legend = FALSE,fontface = "bold",size=2)
+```
+
+
+#KEGG SETUP
+```{r}
+library(pathview)
+library(gage)
+library(gageData)
+library(AnnotationDbi)
+library(org.Rn.eg.db)
+library(stringr)
+
+data("go.sets.rn")
+data("go.subs.rn")
+data(kegg.sets.rn)
+data(sigmet.idx.rn)
+
+keggData<- kegg.gsets(species = "rno", id.type = "entrez", check.new=T)
+kegg.sets.rn<- keggData$kg.sets
+
+#calculate rich ratio
+totalGeneSet=nchar(kegg.sets.rn)
+totalGeneSet=as.data.frame(totalGeneSet)
+totalGeneSet$GeneNoTotal=stringi::stri_count_boundaries(kegg.sets.rn)
+totalGeneSet$id=row.names(totalGeneSet)
+```
+
+##KEGG general pathways
+```{r}
+library(dplyr)
+res3m2<-as.data.frame(res3m1)
+res3m2$gene_symbol<-rownames(res3m2)
+res3m3<-inner_join(res3m2,countData_id,by="gene_symbol")
+
+res3m5=as.data.frame(subset(res3m3,pvalue<0.05))
+FC_3m=res3m5$log2FoldChange
+
+names(FC_3m)=res3m5$gene_id
+head(FC_3m)
+
+kegg3m=gage(exprs=FC_3m,gsets=kegg.sets.rn,same.dir=TRUE)
+kegg3mUp1=kegg3m$greater
+kegg3mDown1=kegg3m$less
+```
+
+```{r}
+res5d2<-as.data.frame(res5d1)
+res5d2$gene_symbol<-rownames(res5d2)
+res5d3<-inner_join(res5d2,countData_id,by="gene_symbol")
+
+res5d5=as.data.frame(subset(res5d3,pvalue<0.05))
+FC_5d=res5d5$log2FoldChange
+
+names(FC_5d)=res5d5$gene_id
+head(FC_5d)
+
+kegg5d=gage(exprs=FC_5d,gsets=kegg.sets.rn,same.dir=TRUE)
+kegg5dUp1=kegg5d$greater
+kegg5dDown1=kegg5d$less
+```
+
+```{r}
+resWKY2<-as.data.frame(resWKY1)
+resWKY2$gene_symbol<-rownames(resWKY2)
+resWKY3<-inner_join(resWKY2,countData_id,by="gene_symbol")
+
+resWKY5=as.data.frame(subset(resWKY3,pvalue<0.05))
+FC_WKY=resWKY5$log2FoldChange
+
+names(FC_WKY)=resWKY5$gene_id
+head(FC_WKY)
+
+keggWKY=gage(exprs=FC_WKY,gsets=kegg.sets.rn,same.dir=TRUE)
+keggWKYUp1=keggWKY$greater
+keggWKYDown1=keggWKY$less
+```
+
+```{r}
+resSHR2<-as.data.frame(resSHR1)
+resSHR2$gene_symbol<-rownames(resSHR2)
+resSHR3<-inner_join(resSHR2,countData_id,by="gene_symbol")
+
+resSHR5=as.data.frame(subset(resSHR3,pvalue<0.05))
+FC_SHR=resSHR5$log2FoldChange
+
+names(FC_SHR)=resSHR5$gene_id
+head(FC_SHR)
+
+keggSHR=gage(exprs=FC_SHR,gsets=kegg.sets.rn,same.dir=TRUE)
+keggSHRUp1=keggSHR$greater
+keggSHRDown1=keggSHR$less
+```
+
+```{r}
+library(ggplot2)
+kegg3mUp2<-as.data.frame(kegg3mUp1[1:20,])
+kegg3mUp2<-subset(kegg3mUp2,p.val>0)
+kegg3mUp2$pathway=row.names(kegg3mUp2)
+
+richRatio3mUp=as.data.frame(cbind(kegg3mUp2[,5],kegg3mUp2[,7]))
+colnames(richRatio3mUp)=c("GeneNumber","id")
+richRatio3mUp1=inner_join(x = totalGeneSet, y = richRatio3mUp, by = 'id')
+kegg3mUp2$ratio3m=as.integer(richRatio3mUp1$GeneNumber)/as.integer(richRatio3mUp1$GeneNoTotal)
+
+kegg3mUp2$pathway <- factor(kegg3mUp2$pathway, levels = kegg3mUp2$pathway[order(-(kegg3mUp2$p.val))])
+
+ggplot(kegg3mUp2, aes(x=ratio3m, y=pathway, size=set.size, color=p.val)) + geom_point() + 
+theme_classic() +scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab",  limits = c(0, 0.08))+
+  xlab("Rich Ratio")+labs(color="P value",size="Gene Number")+ggtitle("3-month-old Joint: WKY vs SHR")+
+  ylab("Upregulated KEGG Pathways")+theme(aspect.ratio=1.5)
+
+kegg3mDown2<-as.data.frame(kegg3mDown1[1:20,])
+kegg3mDown2<-subset(kegg3mDown2,p.val>0)
+kegg3mDown2$pathway=row.names(kegg3mDown2)
+
+richRatio3mDown=as.data.frame(cbind(kegg3mDown2[,5],kegg3mDown2[,7]))
+colnames(richRatio3mDown)=c("GeneNumber","id")
+richRatio3mDown1=inner_join(x = totalGeneSet, y = richRatio3mDown, by = 'id')
+kegg3mDown2$ratio3m=as.integer(richRatio3mDown1$GeneNumber)/as.integer(richRatio3mDown1$GeneNoTotal)
+
+kegg3mDown2$pathway <- factor(kegg3mDown2$pathway, levels = kegg3mDown2$pathway[order(-(kegg3mDown2$p.val))])
+
+ggplot(kegg3mDown2, aes(x=ratio3m, y=pathway, size=set.size, color=p.val)) + geom_point() + 
+theme_classic() +scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab")+xlab("Rich Ratio")+labs(color="P value",size="Gene Number")+ggtitle("3-month-old Joint: WKY vs SHR")+ylab("Downregulated KEGG Pathways")+theme(aspect.ratio=1.5)
+```
+
+```{r}
+library(ggplot2)
+
+kegg5dUp2<-as.data.frame(kegg5dUp1[1:20,])
+kegg5dUp2<-subset(kegg5dUp2,p.val>0)
+kegg5dUp2$pathway=row.names(kegg5dUp2)
+
+richRatio5dUp=as.data.frame(cbind(kegg5dUp2[,5],kegg5dUp2[,7]))
+colnames(richRatio5dUp)=c("GeneNumber","id")
+richRatio5dUp1=inner_join(x = totalGeneSet, y = richRatio5dUp, by = 'id')
+kegg5dUp2$ratio5d=as.integer(richRatio5dUp1$GeneNumber)/as.integer(richRatio5dUp1$GeneNoTotal)
+
+kegg5dUp2$pathway <- factor(kegg5dUp2$pathway, levels = kegg5dUp2$pathway[order(-(kegg5dUp2$p.val))])
+
+ggplot(kegg5dUp2, aes(x=ratio5d, y=pathway, size=set.size, color=p.val)) + geom_point() + 
+theme_classic() +scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab",limits = c(0, 0.2))+
+  xlab("Rich Ratio")+labs(color="P value",size="Gene Number")+ggtitle("5-day-old Joint: WKY vs SHR")+
+  ylab("Upregulated KEGG Pathways")+theme(aspect.ratio=1.5)
+
+kegg5dDown2<-as.data.frame(kegg5dDown1[1:20,])
+kegg5dDown2<-subset(kegg5dDown2,p.val>0)
+kegg5dDown2$pathway=row.names(kegg5dDown2)
+
+richRatio5dDown=as.data.frame(cbind(kegg5dDown2[,5],kegg5dDown2[,7]))
+colnames(richRatio5dDown)=c("GeneNumber","id")
+richRatio5dDown1=inner_join(x = totalGeneSet, y = richRatio5dDown, by = 'id')
+kegg5dDown2$ratio5d=as.integer(richRatio5dDown1$GeneNumber)/as.integer(richRatio5dDown1$GeneNoTotal)
+
+kegg5dDown2$pathway <- factor(kegg5dDown2$pathway, levels = kegg5dDown2$pathway[order(-(kegg5dDown2$p.val))])
+
+ggplot(kegg5dDown2, aes(x=ratio5d, y=pathway, size=set.size, color=p.val)) + geom_point() + 
+theme_classic() +scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab")+xlab("Rich Ratio")+labs(color="P value",size="Gene Number")+ggtitle("5-day-old Joint: WKY vs SHR")+ylab("Downregulated KEGG Pathways")+theme(aspect.ratio=1.5)
+```
+
+```{r}
+library(ggplot2)
+
+keggWKYUp2<-as.data.frame(keggWKYUp1[1:20,])
+keggWKYUp2<-subset(keggWKYUp2,p.val>0)
+keggWKYUp2$pathway=row.names(keggWKYUp2)
+
+richRatioWKYUp=as.data.frame(cbind(keggWKYUp2[,5],keggWKYUp2[,7]))
+colnames(richRatioWKYUp)=c("GeneNumber","id")
+richRatioWKYUp1=inner_join(x = totalGeneSet, y = richRatioWKYUp, by = 'id')
+keggWKYUp2$ratioWKY=as.integer(richRatioWKYUp1$GeneNumber)/as.integer(richRatioWKYUp1$GeneNoTotal)
+
+keggWKYUp2$pathway <- factor(keggWKYUp2$pathway, levels = keggWKYUp2$pathway[order(-(keggWKYUp2$p.val))])
+
+ggplot(keggWKYUp2, aes(x=ratioWKY, y=pathway, size=set.size, color=p.val)) + geom_point() + 
+theme_classic() +scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab",limits = c(0, 0.16))+
+  xlab("Rich Ratio")+labs(color="P value",size="Gene Number")+
+  ggtitle("WKY Joint Chon: 5-day-old vs 3-month-old")+ylab("Upregulated KEGG Pathways")+ 
+    theme(plot.title = element_text(size = 9, face = "bold"))
+
+keggWKYDown2<-as.data.frame(keggWKYDown1[1:20,])
+keggWKYDown2<-subset(keggWKYDown2,p.val>0)
+keggWKYDown2$pathway=row.names(keggWKYDown2)
+
+richRatioWKYDown=as.data.frame(cbind(keggWKYDown2[,5],keggWKYDown2[,7]))
+colnames(richRatioWKYDown)=c("GeneNumber","id")
+richRatioWKYDown1=inner_join(x = totalGeneSet, y = richRatioWKYDown, by = 'id')
+keggWKYDown2$ratioWKY=as.integer(richRatioWKYDown1$GeneNumber)/as.integer(richRatioWKYDown1$GeneNoTotal)
+
+keggWKYDown2$pathway <- factor(keggWKYDown2$pathway, levels = keggWKYDown2$pathway[order(-(keggWKYDown2$p.val))])
+
+ggplot(keggWKYDown2, aes(x=ratioWKY, y=pathway, size=set.size, color=p.val)) + geom_point() + 
+theme_classic() +scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab")+xlab("Rich Ratio")+labs(color="P value",size="Gene Number")+
+  ggtitle("WKY Joint Chon: 5-day-old vs 3-month-old")+ylab("Downregulated KEGG Pathways")+ 
+    theme(plot.title = element_text(size = 9, face = "bold"))
+```
+
+```{r}
+library(ggplot2)
+
+keggSHRUp2<-as.data.frame(keggSHRUp1[1:20,])
+keggSHRUp2<-subset(keggSHRUp2,p.val>0)
+keggSHRUp2$pathway=row.names(keggSHRUp2)
+
+richRatioSHRUp=as.data.frame(cbind(keggSHRUp2[,5],keggSHRUp2[,7]))
+colnames(richRatioSHRUp)=c("GeneNumber","id")
+richRatioSHRUp1=inner_join(x = totalGeneSet, y = richRatioSHRUp, by = 'id')
+keggSHRUp2$ratioSHR=as.integer(richRatioSHRUp1$GeneNumber)/as.integer(richRatioSHRUp1$GeneNoTotal)
+
+keggSHRUp2$pathway <- factor(keggSHRUp2$pathway, levels = keggSHRUp2$pathway[order(-(keggSHRUp2$p.val))])
+
+ggplot(keggSHRUp2, aes(x=ratioSHR, y=pathway, size=set.size, color=p.val)) + geom_point() + 
+theme_classic() +scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab", limits = c(0, 0.015))+
+  xlab("Rich Ratio")+labs(color="P value",size="Gene Number")+
+  ggtitle("SHR Joint Chon: 5-day-old vs 3-month-old")+ylab("Upregulated KEGG Pathways")+
+    theme(plot.title = element_text(size = 9, face = "bold")) 
+
+keggSHRDown2<-as.data.frame(keggSHRDown1[1:20,])
+keggSHRDown2<-subset(keggSHRDown2,p.val>0)
+                       
+keggSHRDown2$pathway=row.names(keggSHRDown2)
+
+richRatioSHRDown=as.data.frame(cbind(keggSHRDown2[,5],keggSHRDown2[,7]))
+colnames(richRatioSHRDown)=c("GeneNumber","id")
+richRatioSHRDown1=inner_join(x = totalGeneSet, y = richRatioSHRDown, by = 'id')
+keggSHRDown2$ratioSHR=as.integer(richRatioSHRDown1$GeneNumber)/as.integer(richRatioSHRDown1$GeneNoTotal)
+
+keggSHRDown2$pathway <- factor(keggSHRDown2$pathway, levels = keggSHRDown2$pathway[order(-(keggSHRDown2$p.val))])
+
+ggplot(keggSHRDown2, aes(x=ratioSHR, y=pathway, size=set.size, color=p.val)) + geom_point() + 
+theme_classic() +scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab")+xlab("Rich Ratio")+
+  labs(color="P value",size="Gene Number")+
+  ggtitle("SHR Joint Chon: 5-day-old vs 3-month-old")+ylab("Downregulated KEGG Pathways") + 
+    theme(plot.title = element_text(size = 9, face = "bold"))
+```
+
+##KEGG metabolic pathways
+```{r}
+kegg.sets.rn.met=list()
+for(i in 1:length(kegg.sets.rn)){
+  if(str_detect(names(kegg.sets.rn[i]), "rno00") || str_detect(names(kegg.sets.rn[i]), "rno01") & !str_detect(names(kegg.sets.rn[i]), "rno01100"))
+  {kegg.sets.rn.met[i]<-kegg.sets.rn[i]
+  names(kegg.sets.rn.met)[i]<-names(kegg.sets.rn)[i]
+  }
+}
+
+#metabolism pathways only
+kegg.sets.rn<-kegg.sets.rn.met
+
+#calculate rich ratio
+totalGeneSet=nchar(kegg.sets.rn)
+totalGeneSet=as.data.frame(totalGeneSet)
+totalGeneSet$GeneNoTotal=stringi::stri_count_boundaries(kegg.sets.rn)
+totalGeneSet$id=row.names(totalGeneSet)
+```
+
+```{r}
+resWKY2<-as.data.frame(resWKY1)
+resWKY2$gene_symbol<-rownames(resWKY2)
+resWKY3<-inner_join(resWKY2,countData_id,by="gene_symbol")
+
+resWKY5=as.data.frame(subset(resWKY3,pvalue<0.05))
+FC_WKY=resWKY5$log2FoldChange
+
+names(FC_WKY)=resWKY5$gene_id
+head(FC_WKY)
+
+keggWKY=gage(exprs=FC_WKY,gsets=kegg.sets.rn,same.dir=TRUE)
+keggWKYUp1=keggWKY$greater
+keggWKYDown1=keggWKY$less
+```
+
+```{r}
+resSHR2<-as.data.frame(resSHR1)
+resSHR2$gene_symbol<-rownames(resSHR2)
+resSHR3<-inner_join(resSHR2,countData_id,by="gene_symbol")
+
+resSHR5=as.data.frame(subset(resSHR3,pvalue<0.05))
+FC_SHR=resSHR5$log2FoldChange
+
+names(FC_SHR)=resSHR5$gene_id
+head(FC_SHR)
+
+keggSHR=gage(exprs=FC_SHR,gsets=kegg.sets.rn,same.dir=TRUE)
+keggSHRUp1=keggSHR$greater
+keggSHRDown1=keggSHR$less
+```
+
+```{r}
+#circular plot
+keggSHRUp2<-as.data.frame(keggSHRUp1[1:10,])
+keggSHRUp2<-subset(keggSHRUp2,p.val>0)
+keggSHRUp2$pathway=row.names(keggSHRUp2)
+
+richRatioSHRUp=as.data.frame(cbind(keggSHRUp2[,5],keggSHRUp2[,7]))
+colnames(richRatioSHRUp)=c("GeneNumber","id")
+richRatioSHRUp1=inner_join(x = totalGeneSet, y = richRatioSHRUp, by = 'id')
+keggSHRUp2$ratioSHR=as.integer(richRatioSHRUp1$GeneNumber)/as.integer(richRatioSHRUp1$GeneNoTotal)
+
+keggSHRUp2$pathway <- factor(keggSHRUp2$pathway, levels = keggSHRUp2$pathway[order(-(keggSHRUp2$p.val))])
+
+p<-ggplot(keggSHRUp2) + theme_minimal() + 
+  geom_hline(aes(yintercept = y), data.frame(y = c(0:5) * 8), color = "lightgrey") + 
+  geom_col(aes(x=fct_inorder(str_wrap(pathway,10)), y=ratioSHR*100, size=ratioSHR*100, fill=p.val, alpha=.9)) +   
+  scale_fill_gradient(low = "red2",  high = "mediumblue", space = "Lab") +  
+  theme(axis.title.y = element_blank(), axis.ticks = element_blank(), axis.text.y = element_blank(), axis.text.x = element_blank())+
+  labs(fill="P value")+ guides(size="none",alpha="none") +
+  ggtitle("SHR Joint Chon: 5-day-old vs 3-month-old")+xlab("Upregulated KEGG Pathways") + 
+    theme(plot.title = element_text(size = 12, face = "bold",vjust=-15)) +  coord_polar()+
+    annotate(x = 0.5,  y = 8, label = "8%",  geom = "text", color = "gray12", size=3.5, vjust=0.5, fontface = "bold")+
+    annotate(x = 0.5,  y = 16, label = "16%",  geom = "text", color = "gray12", size=3.5, vjust=0.5, fontface = "bold")+
+    annotate(x = 0.5,  y = 24, label = "24%",  geom = "text", color = "gray12", size=3.5, vjust=0.5, fontface = "bold")+
+    annotate(x = 0.5,  y = 32, label = "32%",  geom = "text", color = "gray12", size=3.5, vjust=0.5, fontface = "bold")+
+    annotate(x = 0.5,  y = 40, label = "40%",  geom = "text", color = "gray12", size=3.5, vjust=0.5, fontface = "bold")+
+   annotate(x = 0.5,  y = 45, label = "Rich Ratio",  geom = "text", color = "gray12", size=4, vjust=0.5, fontface = "bold")+
+   theme(plot.background = element_rect(fill = "white",colour = NA_character_))+
+ # theme(axis.text.x = element_text( face="bold", size=12))+ 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    theme(axis.title.x = element_text(size = 12, face = "bold",vjust=25))
+
+for (i in 1:10){
+  p <- p+ annotate(x = i,  y = keggSHRUp2$ratioSHR[i]*100+10, label = str_wrap(keggSHRUp2$pathway[i],10),  geom = "text", 
+                   color = "gray12", size=3, vjust=0.5, fontface = "bold")
+}
+  p
+```
+
+```{r}
+#circular plot
+keggWKYUp2<-as.data.frame(keggWKYUp1[1:10,])
+keggWKYUp2<-subset(keggWKYUp2,p.val>0)
+keggWKYUp2$pathway=row.names(keggWKYUp2)
+
+richRatioWKYUp=as.data.frame(cbind(keggWKYUp2[,5],keggWKYUp2[,7]))
+colnames(richRatioWKYUp)=c("GeneNumber","id")
+richRatioWKYUp1=inner_join(x = totalGeneSet, y = richRatioWKYUp, by = 'id')
+keggWKYUp2$ratioWKY=as.integer(richRatioWKYUp1$GeneNumber)/as.integer(richRatioWKYUp1$GeneNoTotal)
+
+keggWKYUp2$pathway <- factor(keggWKYUp2$pathway, levels = keggWKYUp2$pathway[order(-(keggWKYUp2$p.val))])
+
+p<-ggplot(keggWKYUp2) + theme_minimal() + 
+  geom_hline(aes(yintercept = y), data.frame(y = c(0:5) * 8), color = "lightgrey") + 
+  geom_col(aes(x=fct_inorder(str_wrap(pathway,10)), y=ratioWKY*100, size=ratioWKY*100, fill=p.val, alpha=.9)) +   
+  scale_fill_gradient(low = "red2",  high = "mediumblue", space = "Lab") +  
+  theme(axis.title.y = element_blank(), axis.ticks = element_blank(), axis.text.y = element_blank(), axis.text.x = element_blank())+
+  labs(fill="P value")+ guides(size="none",alpha="none") +
+  ggtitle("WKY Joint Chon: 5-day-old vs 3-month-old")+xlab("Upregulated KEGG Pathways") + 
+    theme(plot.title = element_text(size = 12, face = "bold",vjust=-15)) +  coord_polar()+
+    annotate(x = 0.5,  y = 8, label = "8%",  geom = "text", color = "gray12", size=3.5, vjust=0.5, fontface = "bold")+
+    annotate(x = 0.5,  y = 16, label = "16%",  geom = "text", color = "gray12", size=3.5, vjust=0.5, fontface = "bold")+
+    annotate(x = 0.5,  y = 24, label = "24%",  geom = "text", color = "gray12", size=3.5, vjust=0.5, fontface = "bold")+
+    annotate(x = 0.5,  y = 32, label = "32%",  geom = "text", color = "gray12", size=3.5, vjust=0.5, fontface = "bold")+
+    annotate(x = 0.5,  y = 40, label = "40%",  geom = "text", color = "gray12", size=3.5, vjust=0.5, fontface = "bold")+
+   annotate(x = 0.5,  y = 45, label = "Rich Ratio",  geom = "text", color = "gray12", size=4, vjust=0.5, fontface = "bold")+
+   theme(plot.background = element_rect(fill = "white",colour = NA_character_))+
+ # theme(axis.text.x = element_text( face="bold", size=12))+ 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    theme(axis.title.x = element_text(size = 12, face = "bold",vjust=25))
+
+for (i in 1:10){
+  p <- p+ annotate(x = i,  y = keggWKYUp2$ratioWKY[i]*100+10, label = str_wrap(keggWKYUp2$pathway[i],10),  geom = "text", 
+                   color = "gray12", size=3, vjust=0.5, fontface = "bold")
+}
+  p
+```
+
+#Gene Ontology Analysis
+```{r}
+library(GO.db)
+library(GOstats)
+```
+
+##GO individual codes
+```{r}
+#3m
+res3m$id<-rownames(res3m)
+res3m$entrez<-mapIds(org.Rn.eg.db,key=res3m$id,column="ENTREZID",keytype="SYMBOL")
+res3m5=as.data.frame(subset(res3m,padj<0.05))
+universeGenes=res3m$entrez
+
+selectGenesUp3m=subset(res3m5,res3m5$log2FoldChange>0)$entrez
+selectGenesDown3m=subset(res3m5,res3m5$log2FoldChange<0)$entrez
+
+upParams3m=new("GOHyperGParams",geneIds=selectGenesUp3m,universeGeneIds=universeGenes,annotation="org.Rn.eg.db",ontology="BP",pvalueCutoff=0.05, conditional=FALSE,testDirection="over")
+downParams3m=new("GOHyperGParams",geneIds=selectGenesDown3m,universeGeneIds=universeGenes,annotation="org.Rn.eg.db",ontology="BP",pvalueCutoff=0.05, conditional=FALSE,testDirection="over")
+
+upBP_3m=hyperGTest(upParams3m)
+upBP1_3m=summary(upBP_3m)
+downBP_3m=hyperGTest(downParams3m)
+downBP1_3m=summary(downBP_3m)
+
+##
+ontology(upParams3m)="CC"
+upCC_3m=hyperGTest(upParams3m)
+upCC1_3m=summary(upCC_3m)
+
+ontology(downParams3m)="CC"
+downCC_3m=hyperGTest(downParams3m)
+downCC1_3m=summary(downCC_3m)
+
+##
+ontology(upParams3m)="MF"
+upMF_3m=hyperGTest(upParams3m)
+upMF1_3m=summary(upMF_3m)
+
+ontology(downParams3m)="MF"
+downMF_3m=hyperGTest(downParams3m)
+downMF1_3m=summary(downMF_3m)
+```
+
+```{r}
+#5d
+res5d$id<-rownames(res5d)
+res5d$entrez<-mapIds(org.Rn.eg.db,key=res5d$id,column="ENTREZID",keytype="SYMBOL")
+res5d5=as.data.frame(subset(res5d,padj<0.05))
+universeGenes=res5d$entrez
+
+selectGenesUp5d=subset(res5d5,res5d5$log2FoldChange>0)$entrez
+selectGenesDown5d=subset(res5d5,res5d5$log2FoldChange<0)$entrez
+
+upParams5d=new("GOHyperGParams",geneIds=selectGenesUp5d,universeGeneIds=universeGenes,annotation="org.Rn.eg.db",ontology="BP",pvalueCutoff=0.05, conditional=FALSE,testDirection="over")
+downParams5d=new("GOHyperGParams",geneIds=selectGenesDown5d,universeGeneIds=universeGenes,annotation="org.Rn.eg.db",ontology="BP",pvalueCutoff=0.05, conditional=FALSE,testDirection="over")
+
+upBP_5d=hyperGTest(upParams5d)
+upBP1_5d=summary(upBP_5d)
+
+downBP_5d=hyperGTest(downParams5d)
+downBP1_5d=summary(downBP_5d)
+
+##
+ontology(upParams5d)="CC"
+upCC_5d=hyperGTest(upParams5d)
+upCC1_5d=summary(upCC_5d)
+
+ontology(downParams5d)="CC"
+downCC_5d=hyperGTest(downParams5d)
+downCC1_5d=summary(downCC_5d)
+
+##
+ontology(upParams5d)="MF"
+upMF_5d=hyperGTest(upParams5d)
+upMF1_5d=summary(upMF_5d)
+
+ontology(downParams5d)="MF"
+downMF_5d=hyperGTest(downParams5d)
+downMF1_5d=summary(downMF_5d)
+```
+
+
+```{r}
+#WKY 
+resWKY$id<-rownames(resWKY)
+resWKY$entrez<-mapIds(org.Rn.eg.db,key=resWKY$id,column="ENTREZID",keytype="SYMBOL")
+resWKY5=as.data.frame(subset(resWKY,padj<0.05))
+universeGenes=resWKY$entrez
+
+selectGenesUpWKY=subset(resWKY5,resWKY5$log2FoldChange>0)$entrez
+selectGenesDownWKY=subset(resWKY5,resWKY5$log2FoldChange<0)$entrez
+
+upParamsWKY=new("GOHyperGParams",geneIds=selectGenesUpWKY,universeGeneIds=universeGenes,annotation="org.Rn.eg.db",ontology="BP",pvalueCutoff=0.05, conditional=FALSE,testDirection="over")
+downParamsWKY=new("GOHyperGParams",geneIds=selectGenesDownWKY,universeGeneIds=universeGenes,annotation="org.Rn.eg.db",ontology="BP",pvalueCutoff=0.05, conditional=FALSE,testDirection="over")
+
+upBP_WKY=hyperGTest(upParamsWKY)
+upBP1_WKY=summary(upBP_WKY)
+
+downBP_WKY=hyperGTest(downParamsWKY)
+downBP1_WKY=summary(downBP_WKY)
+
+##
+ontology(upParamsWKY)="CC"
+upCC_WKY=hyperGTest(upParamsWKY)
+upCC1_WKY=summary(upCC_WKY)
+
+ontology(downParamsWKY)="CC"
+downCC_WKY=hyperGTest(downParamsWKY)
+downCC1_WKY=summary(downCC_WKY)
+
+##
+ontology(upParamsWKY)="MF"
+upMF_WKY=hyperGTest(upParamsWKY)
+upMF1_WKY=summary(upMF_WKY)
+
+ontology(downParamsWKY)="MF"
+downMF_WKY=hyperGTest(downParamsWKY)
+downMF1_WKY=summary(downMF_WKY)
+```
+
+```{r}
+#SHR
+resSHR$id<-rownames(resSHR)
+resSHR$entrez<-mapIds(org.Rn.eg.db,key=resSHR$id,column="ENTREZID",keytype="SYMBOL")
+resSHR5=as.data.frame(subset(resSHR,padj<0.05))
+universeGenes=resSHR$entrez
+
+selectGenesUpSHR=subset(resSHR5,resSHR5$log2FoldChange>0)$entrez
+selectGenesDownSHR=subset(resSHR5,resSHR5$log2FoldChange<0)$entrez
+
+upParamsSHR=new("GOHyperGParams",geneIds=selectGenesUpSHR,universeGeneIds=universeGenes,annotation="org.Rn.eg.db",ontology="BP",pvalueCutoff=0.05, conditional=FALSE,testDirection="over")
+downParamsSHR=new("GOHyperGParams",geneIds=selectGenesDownSHR,universeGeneIds=universeGenes,annotation="org.Rn.eg.db",ontology="BP",pvalueCutoff=0.05, conditional=FALSE,testDirection="over")
+
+upBP_SHR=hyperGTest(upParamsSHR)
+upBP1_SHR=summary(upBP_SHR)
+
+downBP_SHR=hyperGTest(downParamsSHR)
+downBP1_SHR=summary(downBP_SHR)
+
+##
+ontology(upParamsSHR)="CC"
+upCC_SHR=hyperGTest(upParamsSHR)
+upCC1_SHR=summary(upCC_SHR)
+
+ontology(downParamsSHR)="CC"
+downCC_SHR=hyperGTest(downParamsSHR)
+downCC1_SHR=summary(downCC_SHR)
+
+##
+ontology(upParamsSHR)="MF"
+upMF_SHR=hyperGTest(upParamsSHR)
+upMF1_SHR=summary(upMF_SHR)
+
+ontology(downParamsSHR)="MF"
+downMF_SHR=hyperGTest(downParamsSHR)
+downMF1_SHR=summary(downMF_SHR)
+```
+
+##GO plot
+```{r}
+library('dplyr')
+head(downMF1_WKY)
+row.names(downMF1_WKY) <- downMF1_WKY$Term
+
+downMF1_WKY$ratio=as.integer(downMF1_WKY$Count)/as.integer(downMF1_WKY$Size)
+downMF1_WKY$Term <- factor(downMF1_WKY$Term, levels = downMF1_WKY$Term[order(-(downMF1_WKY$Pvalue))])
+downMF1_WKY <- downMF1_WKY[1:20,]
+
+ggplot(downMF1_WKY, aes(x=Count/Size, y=downMF1_WKY$Term, color=downMF1_WKY$Pvalue, size=downMF1_WKY$Count)) + geom_point() +  theme_classic() + scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab")+xlab("Rich Ratio")+labs(color="P value", size="Gene Number")+ylab("Downregulated GO Pathways (Molecular Function)") +ggtitle("WKY Joint Chon: 5-day-old vs 3-month-old")
+```
+
+```{r}
+library('dplyr')
+head(upMF1_SHR)
+row.names(upMF1_SHR) <- upMF1_SHR$Term
+
+upMF1_SHR$ratio=as.integer(upMF1_SHR$Count)/as.integer(upMF1_SHR$Size)
+upMF1_SHR$Term <- factor(upMF1_SHR$Term, levels = upMF1_SHR$Term[order(-(upMF1_SHR$Pvalue))])
+upMF1_SHR <- upMF1_SHR[1:20,]
+
+ggplot(upMF1_SHR, aes(x=Count/Size, y=upMF1_SHR$Term, color=upMF1_SHR$Pvalue, size=upMF1_SHR$Count)) + geom_point() +  theme_classic() + scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab")+xlab("Rich Ratio")+labs(color="P value", size="Gene Number")+ylab("Upregulated GO Pathways (Molecular Function)") +ggtitle("SHR Joint Chon: 5-day-old vs 3-month-old")
+```
+
+```{r}
+library('dplyr')
+head(downBP1_SHR)
+row.names(downBP1_SHR) <- downBP1_SHR$Term
+
+downBP1_SHR$ratio=as.integer(downBP1_SHR$Count)/as.integer(downBP1_SHR$Size)
+downBP1_SHR$Term <- factor(downBP1_SHR$Term, levels = downBP1_SHR$Term[order(-(downBP1_SHR$Pvalue))])
+
+downBP1_SHR <- downBP1_SHR[1:20,]
+
+ggplot(downBP1_SHR, aes(x=Count/Size, y=downBP1_SHR$Term, color=downBP1_SHR$Pvalue, size=downBP1_SHR$Count)) + geom_point() +  theme_classic() + scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab")+xlab("Rich Ratio")+labs(color="P value", size="Gene Number")+ylab("Downregulated GO Pathways (Biological Process)") +ggtitle("SHR Joint Chon: 5-day-old vs 3-month-old")
+```
+
+```{r}
+library('dplyr')
+head(downBP1_WKY)
+row.names(downBP1_WKY) <- downBP1_WKY$Term
+
+downBP1_WKY$ratio=as.integer(downBP1_WKY$Count)/as.integer(downBP1_WKY$Size)
+downBP1_WKY$Term <- factor(downBP1_WKY$Term, levels = downBP1_WKY$Term[order(-(downBP1_WKY$Pvalue))])
+
+downBP1_WKY <- downBP1_WKY[1:20,]
+
+ggplot(downBP1_WKY, aes(x=Count/Size, y=downBP1_WKY$Term, color=downBP1_WKY$Pvalue, size=downBP1_WKY$Count)) + geom_point() +  theme_classic() + scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab")+xlab("Rich Ratio")+labs(color="P value", size="Gene Number")+ylab("Downregulated GO Pathways (Biological Process)") +ggtitle("WKY Joint Chon: 5-day-old vs 3-month-old")
+```
+
+#Combine normalized expression and differential analysis
+```{r}
+res3m1=as.data.frame(res3m)
+rld3m1=as.data.frame(assay(rld3m))
+rld3m1$id <- rownames(rld3m1)
+res3m1$id <- rownames(res3m1)
+cbind_3m<-inner_join(rld3m1,res3m1,by="id")
+rownames(cbind_3m)<-cbind_3m$id
+
+res5d1=as.data.frame(res5d)
+rld5d1=as.data.frame(assay(rld5d))
+rld5d1$id <- rownames(rld5d1)
+res5d1$id <- rownames(res5d1)
+cbind_5d<-inner_join(rld5d1,res5d1,by="id")
+rownames(cbind_5d)<-cbind_5d$id
+
+resWKY1=as.data.frame(resWKY)
+rldWKY1=as.data.frame(assay(rldWKY))
+rldWKY1$id <- rownames(rldWKY1)
+resWKY1$id <- rownames(resWKY1)
+WKY1<-inner_join(rldWKY1,resWKY1,by="id")
+rownames(WKY1)<-WKY1$id
+
+resSHR1=as.data.frame(resSHR)
+rldSHR1=as.data.frame(assay(rldSHR))
+rldSHR1$id <- rownames(rldSHR1)
+resSHR1$id <- rownames(resSHR1)
+SHR1<-inner_join(rldSHR1,resSHR1,by="id")
+rownames(SHR1)<-SHR1$id
+
+rldChon1=as.data.frame(assay(rldChon))
+rldChon1$id <- rownames(rldChon1)
+Chon1<-rldChon1
+rownames(Chon1)<-Chon1$id
+
+all_list<-list(cbind_3m,cbind_5d,WKY1,SHR1,Chon1)
+names(all_list) <- c("3-month-old Joint: WKY vs SHR","5-day-old Joint: WKY vs SHR","WKYJoint: 5-day-old vs 3-month-old","SHR Joint: 5-day-old vs 3-month-old","Chondrocytes: WKY vs SHR")
+```
+
+#Select group for analysis (2 groups)
+```{r}
+#2 groups
+x0 = all_list$`5-day-old Joint: WKY vs SHR`
+#x0 = all_list$`3-month-old Joint: WKY vs SHR`
+#x0 = all_list$`WKYJoint: 5-day-old vs 3-month-old`
+#x0 = all_list$`SHR Joint: 5-day-old vs 3-month-old`
+
+title_group=paste0(colnames(x0[1])," vs ",colnames(x0[4]))
+title_group <- gsub("_A","",title_group)
+
+x_rld=as.data.frame(dplyr::select(x0,1,2,3,4,5,6))
+z=as.data.frame(dplyr::select(x0,8,9,10,11,12,13))
+
+groups = c("WKY","WKY","WKY",'SHR','SHR','SHR')
+#groups = c("5-day-old","5-day-old","5-day-old",'3-month-old','3-month-old','3-month-old')
+```
+
+```{r}
+#Target pathways
+kegg.sets.rn<- keggData$kg.sets
+keggInt=as.data.frame(kegg.sets.rn$`rno04150 mTOR signaling pathway`)
+colnames(keggInt)[1]<-"entrez"
+keggInt$id=mapIds(org.Rn.eg.db,key=keggInt$entrez,column="SYMBOL",keytype="ENTREZID")
+keggInt<-keggInt[-1]
+ids<-keggInt
+```
+
+```{r}
+###2 group
+library(ComplexHeatmap)
+library(dplyr)
+
+#significance
+z$id<-row.names(z)
+z1=inner_join(x = ids, y =z , by = 'id')
+
+z1$sig<-ifelse(z1$padj<0.0001,'****',
+                    ifelse(z1$padj<0.001,'***',
+                           ifelse(z1$padj<0.01,'**',
+                                  ifelse(z1$padj<0.05,'*','ns'))))
+z1$sig<-ifelse(z1$pval<0.05,z1$sig,'ns')
+
+##significant only
+#z1<-subset(z1,padj<0.05)
+z1<-subset(z1,pvalue<0.05)
+
+#expression
+x=as.data.frame(x_rld)
+x$id<-row.names(x)
+
+x1=inner_join(x = ids, y =x , by = 'id')
+rownames(x1)<-x1$id
+
+x1=inner_join(x = x1, y =z1 , by = 'id')
+x1=dplyr::select(x1,1,2,3,4,5,6,7)
+
+rownames(x1)<-x1$id
+x1<-x1[,-1]
+x2=as.matrix(x1)
+
+x3=x2
+
+##draw heatmap
+
+ c1<-c('cyan','#FF6EC7')
+names(c1)<- unique(groups)
+ c2<-c('yellow','orange','red','magenta','gray')
+names(c2)<-c('*','**','***','****','ns')
+
+ha=columnAnnotation("Groups"=groups,
+                       col=list("Groups"=c1),  #if error, check group no.
+                       show_annotation_name = TRUE,
+                       # annotation_name_side="right",
+                       annotation_name_gp = gpar(fontsize = 7),
+                       show_legend=T,
+                       simple_anno_size = unit(0.2, "cm"),
+                       annotation_height=unit.c(unit(0.07, "cm")))
+
+ha1 = rowAnnotation("Significance"=z1$sig,
+                       col=list("Significance"=c2),
+                       show_annotation_name = TRUE,
+                       # annotation_name_side="right",
+                       annotation_name_gp = gpar(fontsize = 7),
+                       show_legend=T,
+                       simple_anno_size = unit(0.2, "cm"),
+                       annotation_height=unit.c(unit(0.07, "cm")))
+
+ht<-Heatmap(x3,
+                name='Normalized Expression',
+                 top_annotation = ha,
+                 cluster_rows = T,
+                left_annotation = ha1,
+                col=bluered(75),
+                color_space = "RGB",
+                cluster_columns = FALSE,
+                row_order=NULL,
+                show_column_names = T,
+                show_row_names = T,
+                row_names_gp = gpar(fontsize = 7),
+                column_names_gp = gpar(fontsize = 7),
+                gap = unit(3, "mm"),
+                column_title_gp = gpar(fontsize = 7),
+                width=unit(ncol(x3)*2.6/6, "cm"),
+                height=unit(nrow(x3)*0.35, "cm"),
+                show_heatmap_legend = T,
+                heatmap_legend_param=list(labels_gp = gpar(fontsize = 7, fontface = "bold"),
+                                          title_gp = gpar(fontsize = 7, fontface = "bold"))) 
+
+ draw(ht)
+```
+
+#Overall analysis (4 groups)
+```{r}
+#group
+x0 = all_list$`Chondrocytes: WKY vs SHR`
+
+title_group="Chondrocytes WKY vs SHR"
+x_rld=as.data.frame(dplyr::select(x0,1,2,3,4,5,6,7,8,9,10,11,12))
+
+x_3m = all_list$`3-month-old Joint: WKY vs SHR`
+z_3m=as.data.frame(dplyr::select(x_3m,8,9,10,11,12,13))
+x_5d = all_list$`5-day-old Joint: WKY vs SHR`
+z_5d=as.data.frame(dplyr::select(x_5d,8,9,10,11,12,13))
+x_S = all_list$`SHR Joint: 5-day-old vs 3-month-old`
+z_S=as.data.frame(dplyr::select(x_S,8,9,10,11,12,13))
+x_W = all_list$`WKYJoint: 5-day-old vs 3-month-old`
+z_W=as.data.frame(dplyr::select(x_W,8,9,10,11,12,13))
+
+groups = c("5do WKY","5do WKY","5do WKY","3mo WKY","3mo WKY","3mo WKY",'5do SHR','5do SHR','5do SHR','3mo SHR','3mo SHR','3mo SHR')
+```
+
+```{r}
+library(stringr)
+library(dplyr)
+#Target genes
+ids1=read.csv('D:/WKY_vs_SHR/ids1.csv',header=1)
+ids1<-mutate_all(ids1, .funs=str_to_title)
+
+ids=as.data.frame(as.character(ids1$Insulin.like.Growth.Factor.Signalling))
+colnames(ids)[1]<-"id"
+```
+
+```{r}
+###4 groups
+library(ComplexHeatmap)
+
+library(gplots)
+#expression
+x=as.data.frame(x_rld)
+x$id<-row.names(x)
+
+x1=inner_join(x = ids, y =x , by = 'id')
+rownames(x1)<-x1$id
+
+#significance for individual comparison
+z_3m$id<-row.names(z_3m)
+z_5d$id<-row.names(z_5d)
+z_S$id<-row.names(z_S)
+z_W$id<-row.names(z_W)
+
+z_5d<-subset(z_5d,z_5d$baseMean>0)
+z_3m<-subset(z_3m,z_3m$baseMean>0)
+z_S<-subset(z_S,z_S$baseMean>0)
+z_W<-subset(z_W,z_W$baseMean>0)
+
+z_3m$sig_3m<-ifelse(z_3m$padj<0.0001,'****',
+                    ifelse(z_3m$padj<0.001,'***',
+                           ifelse(z_3m$padj<0.01,'**',
+                                  ifelse(z_3m$padj<0.05,'*','ns'))))
+z_3m$sig_3m<-ifelse(z_3m$pval<0.05,z_3m$sig_3m,'ns')
+z_5d$sig_5d<-ifelse(z_5d$padj<0.0001,'****',
+                    ifelse(z_5d$padj<0.001,'***',
+                           ifelse(z_5d$padj<0.01,'**',
+                                  ifelse(z_5d$padj<0.05,'*','ns'))))
+z_5d$sig_5d<-ifelse(z_5d$pval<0.05,z_5d$sig_5d,'ns')
+z_W$sig_W<-ifelse(z_W$padj<0.0001,'****',
+                    ifelse(z_W$padj<0.001,'***',
+                           ifelse(z_W$padj<0.01,'**',
+                                  ifelse(z_W$padj<0.05,'*','ns'))))
+z_W$sig_W<-ifelse(z_W$pval<0.05,z_W$sig_W,'ns')
+z_S$sig_S<-ifelse(z_S$padj<0.0001,'****',
+                    ifelse(z_S$padj<0.001,'***',
+                           ifelse(z_S$padj<0.01,'**',
+                                  ifelse(z_S$padj<0.05,'*','ns'))))
+z_S$sig_S<-ifelse(z_S$pval<0.05,z_S$sig_S,'ns')
+
+x1=inner_join(x = x1, y =z_3m , by = 'id')
+x1=inner_join(x = x1, y =z_5d , by = 'id')
+x1=inner_join(x = x1, y =z_W , by = 'id')
+x1=inner_join(x = x1, y =z_S , by = 'id')
+
+##significant only
+#x1<-subset(x1, padj.x<0.05 | padj.y<0.05 | padj.x.x<0.05 | padj.y.y<0.05)
+#x1<-subset(x1, padj.x.x<0.05 | padj.y.y<0.05)    #time
+#x1<-subset(x1, padj.x<0.05 | padj.y<0.05)   #strain
+
+x2=dplyr::select(x1,1,2,3,4,5,6,7,8,9,10,11,12,13)
+
+rownames(x2)<-x1$id
+x2<-x2[,-1]
+x2=as.matrix(x2)
+
+x3=x2
+
+##draw heatmap
+
+ c1<-c('cyan','#FF6EC7','limegreen','purple')
+names(c1)<- unique(groups)
+ c2<-c('yellow','orange','red','magenta','gray')
+names(c2)<-c('*','**','***','****','ns')
+
+ha=columnAnnotation("Groups"=groups,
+                       col=list("Groups"=c1),
+                       show_annotation_name = TRUE,
+                       # annotation_name_side="right",
+                       annotation_name_gp = gpar(fontsize = 7),
+                       show_legend=T,
+                       simple_anno_size = unit(0.2, "cm"),
+                       annotation_height=unit.c(unit(0.07, "cm")))
+
+ha1 = rowAnnotation("3-month: WKY vs SHR"=x1$sig_3m,
+                    "5-day: WKY vs SHR"=x1$sig_5d,
+                    "WKY: 3-month vs 5-day"=x1$sig_W,
+                    "SHR: 3-month vs 5-day"=x1$sig_S,
+                       col=list("5-day: WKY vs SHR"=c2,"WKY: 3-month vs 5-day"=c2,"SHR: 3-month vs 5-day"=c2,"3-month: WKY vs SHR"=c2),
+                       show_annotation_name = TRUE,
+                       # annotation_name_side="right",
+                       annotation_name_gp = gpar(fontsize = 7),
+                       show_legend=T,
+                       simple_anno_size = unit(0.2, "cm"),
+                       annotation_height=unit.c(unit(0.07, "cm")))
+
+ht<-Heatmap(x3,
+                name='Normalized Expression',
+                 top_annotation = ha,
+                 cluster_rows = T,
+                left_annotation = ha1,
+                col=bluered(75),
+                color_space = "RGB",
+                cluster_columns = FALSE,
+                row_order=NULL,
+                show_column_names = T,
+                show_row_names = T,
+                row_names_gp = gpar(fontsize = 7),
+                column_names_gp = gpar(fontsize = 7),
+                gap = unit(3, "mm"),
+                column_title_gp = gpar(fontsize = 7),
+                width=unit(ncol(x3)*2.6/6, "cm"),
+                height=unit(nrow(x3)*0.35, "cm"),
+                show_heatmap_legend = T,
+                heatmap_legend_param=list(labels_gp = gpar(fontsize = 7, fontface = "bold"),
+                                          title_gp = gpar(fontsize = 7, fontface = "bold"))) 
+
+ draw(ht)
+```
+
+##Boxplot
+```{r}
+gene_id="Igf1"
+
+#Order (left to right): WKY 5d, WKY 3m, SHR 5d, SHR 3m
+
+options(scipen=999)
+
+pval12=z_W[gene_id,6] 
+pval13=z_5d[gene_id,6] 
+pval34=z_S[gene_id,6] 
+pval24=z_3m[gene_id,6] 
+
+group1="5do WKY"
+group2="3mo WKY"
+group3="5do SHR"
+group4="3mo SHR"
+
+all_rld<-x_rld
+
+exprs1=all_rld[gene_id,1:3]
+exprs1<- as.data.frame(t(exprs1))
+colnames(exprs1)=c("Expression")
+exprs1$Strain=c(group1)
+
+exprs2=all_rld[gene_id,4:6]
+exprs2<- as.data.frame(t(exprs2))
+colnames(exprs2)=c("Expression")
+exprs2$Strain=c(group2)
+
+exprs3=all_rld[gene_id,7:9]
+exprs3<- as.data.frame(t(exprs3))
+colnames(exprs3)=c("Expression")
+exprs3$Strain=c(group3)
+
+exprs4=all_rld[gene_id,10:12]
+exprs4<- as.data.frame(t(exprs4))
+colnames(exprs4)=c("Expression")
+exprs4$Strain=c(group4)
+
+exprs0=rbind(exprs1,exprs2,exprs3,exprs4)
+
+y_max=colMaxs(as.matrix(exprs0[,1]))+0.3
+y_min=colMins(as.matrix(exprs0[,1]))-0.3
+
+pval12_y=colMaxs(as.matrix(exprs0[,1]))*1.01
+pval13_y=colMaxs(as.matrix(exprs0[,1]))*1.01+(y_max-y_min)*y_max/(8*y_max)
+pval24_y=colMaxs(as.matrix(exprs0[,1]))*1.01+(y_max-y_min)*y_max/(16*y_max)
+pval34_y=colMaxs(as.matrix(exprs0[,1]))*1.01
+
+if(pval12<0.0001){
+  df12<-data.frame(group1=group1, group2=group2, p.adj="p < 0.0001",y.position=pval12_y)
+  } else if(pval12>0.1) {
+  df12<-data.frame(group1=group1, group2=group2, p.adj="ns",y.position=pval12_y)
+  } else if (pval12>0.0001 && pval12<0.1){ pval12<-round(pval12,4)
+  df12<-data.frame(group1=group1, group2=group2,p.adj=paste0("p = ", as.character(format(pval12, scientific=F))), y.position=pval12_y)
+  }
+if(pval13<0.0001){
+  df13<-data.frame(group1=group1, group2=group3, p.adj="p < 0.0001",y.position=pval13_y)
+  } else if(pval13>0.1) {
+  df13<-data.frame(group1=group1, group2=group3, p.adj="ns",y.position=pval13_y)
+  } else if (pval13>0.0001 && pval13<0.1)  { pval13<-round(pval13,4)
+  df13<-data.frame(group1=group1, group2=group3,p.adj=paste0("p = ", as.character(format(pval13, scientific=F))), y.position=pval13_y)
+  }
+if(pval24<0.0001){
+  df24<-data.frame(group1=group2, group2=group4, p.adj="p < 0.0001",y.position=pval24_y)
+  } else if (pval24>0.1) {
+  df24<-data.frame(group1=group2, group2=group4, p.adj="ns",y.position=pval24_y)
+  } else if (pval24>0.0001 && pval24<0.1) { pval24<-round(pval24,4)
+  df24<-data.frame(group1=group2, group2=group4,p.adj=paste0("p = ", as.character(format(pval24, scientific=F))), y.position=pval24_y)
+  }
+if(pval34<0.0001){
+  df34<-data.frame(group1=group3, group2=group4, p.adj="p < 0.0001",y.position=pval34_y)
+ } else if (pval34>0.1) {
+  df34<-data.frame(group1=group3, group2=group4, p.adj="ns",y.position=pval34_y)
+  } else if (pval34>0.0001 && pval34<0.1) { pval34<-round(pval34,4)
+  df34<-data.frame(group1=group3, group2=group4,p.adj=paste0("p = ", as.character(format(pval34, scientific=F))), y.position=pval34_y)
+  }
+
+ggplot(exprs0, aes(x=fct_inorder(Strain), y=Expression,color=fct_inorder(Strain))) +
+  scale_color_manual(values=c("blue","red","green","purple")) +
+  geom_boxplot(width=0.5,outlier.colour="yellow", outlier.shape=8,outlier.size=2,show.legend=FALSE) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1,show.legend=FALSE) + 
+  labs(title=gene_id) + xlab("") + ylab("Normalized Expression") +
+  theme_classic() + 
+  theme(text = element_text(color="black",size=12,family = "sans"))+
+  theme(plot.title = element_text(size=12,hjust=0.5,face="bold"))+
+  theme(axis.title.y = element_text(size=12.5,face="bold"))+
+  theme(axis.text.x = element_text(angle = 45, hjust=1,face="bold"))+
+  theme(axis.text.y = element_text(face="bold"))+
+  theme(plot.background = element_rect(fill = "transparent",colour = NA_character_))+
+  theme(panel.background = element_rect(fill = "white"))+
+  ylim(y_min,y_max)+ scale_y_continuous(n.breaks=7)+
+  stat_pvalue_manual(df12, label = "p.adj",size=2.5,vjust=-0.05, bracket.shorten=0.03)+
+  stat_pvalue_manual(df13, label = "p.adj",size=2.5,vjust=-0.05,bracket.shorten=0.03)+
+  stat_pvalue_manual(df24, label = "p.adj",size=2.5,vjust=-0.05,bracket.shorten=0.03)+
+  stat_pvalue_manual(df34, label = "p.adj",size=2.5,vjust=-0.05,bracket.shorten=0.03)
+```
+
+
+##Correlation matrix
+```{r}
+library(rstatix)
+library(ggcorrplot)
+
+ids1=read.csv('D:/WKY_vs_SHR/ids1.csv',header=1)
+ids1<-mutate_all(ids1, .funs=str_to_title)
+ids=as.data.frame(as.character(ids1$Insulin.like.Growth.Factor.Signalling))
+ids<-subset(ids,ids[,1]!="")
+gene_ids_1<-ids
+
+ids1=read.csv('D:/WKY_vs_SHR/ids1.csv',header=1)
+ids1<-mutate_all(ids1, .funs=str_to_title)
+ids=as.data.frame(as.character(ids1$glycolysis.MARKERS))
+ids<-subset(ids,ids[,1]!="")
+gene_ids_2<-ids
+
+matrix_1<-as.data.frame(matrix(ncol=ncol(x_rld)))
+colnames(matrix_1)<-colnames(x_rld)
+for (i in 1:nrow(gene_ids_1)){
+  gene_no_1<-gene_ids_1[i,] 
+  exprs_1=x_rld[gene_no_1,]
+  matrix_1=rbind(exprs_1,matrix_1)
+}
+matrix_1<-na.omit(matrix_1)
+matrix_1<-t(matrix_1)
+
+matrix_2<-as.data.frame(matrix(ncol=ncol(x_rld)))
+colnames(matrix_2)<-colnames(x_rld)
+for (i in 1:nrow(gene_ids_2)){
+  gene_no_2<-gene_ids_2[i,] 
+  exprs_2=x_rld[gene_no_2,]
+  matrix_2=rbind(exprs_2,matrix_2)
+}
+matrix_2<-na.omit(matrix_2)
+matrix_2<-t(matrix_2)
+matrix_corr <-cor(x=matrix_1,y=matrix_2, method = "pearson")
+
+matrix_corr2<-cor(cbind(matrix_1,matrix_2))
+p.mat <- cor_pmat(cbind(matrix_1,matrix_2))
+p.mat_sig <- p.mat<0.05
+p.mat_5<-ifelse(p.mat_sig,p.mat,"ns")
+
+ggcorrplot(matrix_corr2, p.mat = p.mat, legend.title ="Pearson r", outline.color = "black" , 
+           type="lower",insig = "blank",colors = c("blue2", "white", "red2"),sig.level = 0.1, 
+           tl.cex = 8 , lab=TRUE, digits = 2, lab_size = 2,method = "square") 
+```
