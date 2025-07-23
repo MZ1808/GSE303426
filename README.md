@@ -18,3 +18,17 @@ SHR_Joint_5d_C | SHR | 5-day old | Joint chondrocytes | 2 | 3
 SHR_Joint_3m_A | SHR | 3-month old | Joint chondrocytes | 1 | 1
 SHR_Joint_3m_B | SHR | 3-month old | Joint chondrocytes | 1 | 2
 SHR_Joint_3m_C | SHR | 3-month old | Joint chondrocytes | 2 | 3
+# File description
+<b>countdata.csv</b>: raw read counts <br>
+<b>chon_seq.Rmd</b>: codes for analysis and producing figures <br>
+<b>ids1.csv</b>: list of target genes <p>
+<b>Normalized expression:</b> <br>
+<b>exprs_5d.csv</b>: normalized expression of all chondrocytes from 5-day old rats <br>
+<b>exprs_3m.csv</b>: normalized expression of all chondrocytes from 3-month old rats <br>
+<b>exprs_WKY.csv</b>: normalized expression of all chondrocytes from WKY <br>
+<b>exprs_SHR.csv</b>: normalized expression of all chondrocytes from SHR <p>
+<b>Differential analysis results:</b> <br>
+<b>DESeq_5d.csv</b>: differential analysis comparing WKY and SHR chondrocytes in 5-day-old rats <br>
+<b>DESeq_3m.csv</b>: differential analysis comparing WKY and SHR chondrocytes in 3-month-old rats <br>
+<b>DESeq_WKY.csv</b>: differential analysis comparing the developmental change from 5-day-old to 3-month-old in WKY <br>
+<b>DESeq_SHR.csv</b>: differential analysis comparing the developmental change from 5-day-old to 3-month-old in SHR <p>
