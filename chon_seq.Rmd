@@ -16,7 +16,7 @@ library(stringr)
 library(ggrepel)
 library(gplots)
 
-countData=read.csv('H:/geo submission/countdata.csv',header=1)
+countData=read.csv('D:/countdata.csv',header=1)
 countData_id<-dplyr::select(countData,1,2)
 head(countData)
 rownames(countData)=countData$gene_symbol
@@ -259,6 +259,64 @@ ggplot(data=resSHR1, aes(x=log2FoldChange, y=-log10(padj), col=sig,label=label))
   geom_text_repel(check_overlap = TRUE,show.legend = FALSE,fontface = "bold",size=2)
 ```
 
+#volcano
+```{r}
+library(dplyr)
+library(stringr)
+#target genes
+ids1=read.csv('D:/ids1.csv',header=1)
+ids1<-mutate_all(ids1, .funs=str_to_title)
+ids=as.character(ids1$Insulin.like.Growth.Factor.Signalling)
+ids<-unique(ids)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+
+res1=as.data.frame(res5d1)
+title2="5-day-old Joint Chondrocytes: WKY vs SHR"
+
+res1$geneid<-rownames(res1)
+res1=mutate(res1,sig="No change")
+res1$sig[res1$log2FoldChange > 1 & res1$padj < 0.05] <- "Upregulated"
+res1$sig[res1$log2FoldChange < -1 & res1$padj < 0.05] <- "Downregulated"
+
+# Identify the top 10 hits
+Top_Hits = subset(res1,res1$padj<(1e-15) | abs(res1$log2FoldChange) > 5)
+Top_Hits = subset(Top_Hits,abs(Top_Hits$log2FoldChange)>1 & Top_Hits$padj<0.05)
+
+# Add column label, containing the gene name for the top hits or nothing for all others
+res1$label = if_else(res1$geneid %in% Top_Hits$geneid,  
+                   res1$geneid, "")
+
+#ids<-intersect(ids,Top_Hits$geneid)
+ids<-unique(ids)
+
+library(EnhancedVolcano)
+  
+  keyvals <- ifelse(res1$log2FoldChange < 0, 'lightblue',
+      ifelse(res1$log2FoldChange > 0, 'lightpink','lightgrey'))
+  keyvals <- ifelse(res1$log2FoldChange < -1, '#619CFF',
+       ifelse(res1$log2FoldChange > 1, '#F8766D',keyvals))
+  keyvals <- ifelse(res1$padj<0.05,keyvals,'lightgrey')
+  keyvals[is.na(keyvals)] <- 'lightgrey'
+  
+  names(keyvals)[keyvals == '#F8766D'] <- 'Upregulated'
+  names(keyvals)[keyvals == 'lightpink'] <- 'Moderately increased'
+  names(keyvals)[keyvals == 'lightgrey'] <- 'No significant difference'
+  names(keyvals)[keyvals == 'lightblue'] <- 'Moderately reduced'
+  names(keyvals)[keyvals == '#619CFF'] <- 'Downregulated'
+
+EnhancedVolcano(res1, lab = res1$geneid, x = 'log2FoldChange', y = 'padj',
+    selectLab = ids,xlim = c(-10,10), ylim=c(-5,35),
+    xlab = bquote(~Log[2]~ 'fold change'), pCutoff = 0.05, FCcutoff = 1.0, pointSize = 2.0,
+    labSize = 2.5, labCol = 'black', labFace = 'bold', boxedLabels = TRUE, colAlpha = 4/5,
+    legendPosition = 'none', title = title2,
+     colCustom = keyvals, gridlines.major = FALSE, gridlines.minor = FALSE,max.overlaps=Inf,
+    drawConnectors = TRUE, widthConnectors = 0.1, colConnectors = 'black',endsConnectors="last",typeConnectors="open")
+```
 
 #KEGG SETUP
 ```{r}
@@ -833,6 +891,27 @@ downBP1_WKY <- downBP1_WKY[1:20,]
 ggplot(downBP1_WKY, aes(x=Count/Size, y=downBP1_WKY$Term, color=downBP1_WKY$Pvalue, size=downBP1_WKY$Count)) + geom_point() +  theme_classic() + scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab")+xlab("Rich Ratio")+labs(color="P value", size="Gene Number")+ylab("Downregulated GO Pathways (Biological Process)") +ggtitle("WKY Joint Chon: 5-day-old vs 3-month-old")
 ```
 
+#consolidated plot
+```{r}
+library(forcats)
+options(scipen=999)
+
+all_pathways=kegg5dUp2
+
+all_pathways$Bg<-gsub("\\/.*","",all_pathways$BgRatio)
+all_pathways$RichRatio=as.numeric(all_pathways$Count)/as.numeric(all_pathways$Bg)
+
+all_pathways$Description <- as.factor(all_pathways$Description)
+
+ggplot(all_pathways, aes(x=RichRatio, y=fct_rev(fct_inorder(Description)), size=Count, color=qvalue)) + geom_point() + 
+theme_bw() +scale_color_gradient(low = "red2",  high = "mediumblue", space = "Lab")+
+  xlab("Rich Ratio")+labs(color="Q value",size="Gene Number")+
+  ylab("Pathway Enrichment Analysis")+ theme(axis.text.x = element_text(face="bold"))+
+  theme(axis.text.y = element_text(color="black"))+
+  theme(legend.key.size = unit(4, 'mm'),legend.title = element_text(size=9,face="bold"),legend.text = element_text(size=7))+
+  facet_grid(rows = vars(fct_inorder(Category)),scales = "free_y",space = 'free')
+```
+
 #Combine normalized expression and differential analysis
 ```{r}
 res3m1=as.data.frame(res3m)
@@ -1008,7 +1087,7 @@ groups = c("5do WKY","5do WKY","5do WKY","3mo WKY","3mo WKY","3mo WKY",'5do SHR'
 library(stringr)
 library(dplyr)
 #Target genes
-ids1=read.csv('D:/WKY_vs_SHR/ids1.csv',header=1)
+ids1=read.csv('D:/ids1.csv',header=1)
 ids1<-mutate_all(ids1, .funs=str_to_title)
 
 ids=as.data.frame(as.character(ids1$Insulin.like.Growth.Factor.Signalling))
@@ -1234,13 +1313,13 @@ ggplot(exprs0, aes(x=fct_inorder(Strain), y=Expression,color=fct_inorder(Strain)
 library(rstatix)
 library(ggcorrplot)
 
-ids1=read.csv('D:/WKY_vs_SHR/ids1.csv',header=1)
+ids1=read.csv('D:/ids1.csv',header=1)
 ids1<-mutate_all(ids1, .funs=str_to_title)
 ids=as.data.frame(as.character(ids1$Insulin.like.Growth.Factor.Signalling))
 ids<-subset(ids,ids[,1]!="")
 gene_ids_1<-ids
 
-ids1=read.csv('D:/WKY_vs_SHR/ids1.csv',header=1)
+ids1=read.csv('D:/ids1.csv',header=1)
 ids1<-mutate_all(ids1, .funs=str_to_title)
 ids=as.data.frame(as.character(ids1$glycolysis.MARKERS))
 ids<-subset(ids,ids[,1]!="")
